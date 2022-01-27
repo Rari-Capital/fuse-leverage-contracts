@@ -88,9 +88,6 @@ contract LeverageManager is
         
         // Exact Amount in is the way to go, it may casue slight variation in opening leverage 
         
-    
-
-
         IERC20Minimal token0 = IERC20Minimal(decoded.token0);
         IERC20Minimal token1 = IERC20Minimal(decoded.token1);  
         uint256 amountIn     = dir ? _amount0 : _amount1; 
@@ -156,8 +153,6 @@ contract LeverageManager is
         uint160 sqrtPriceLimitX96;
         uint256 millis;
     }
-
-
     ///////// EOA CALLED FUNCTIONS ///////////
 
     /** 
@@ -166,7 +161,7 @@ contract LeverageManager is
     * 
     * @param:
      */
-    function initSwapUnsafe(SwapParams memory params) external {
+    function initSwapUnsafe(SwapParams memory params) external OnlyOwner {
         
         PoolAddress.PoolKey memory poolKey =
             PoolAddress.PoolKey({token0: params.token0, token1: params.token1, fee: params.fee});
