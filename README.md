@@ -11,9 +11,9 @@ rough draft of cloneable univ3 swap receiver for openeing, closing, and editing 
 ## Arcitecture
 *see architecture.md for a cool ascii diagram*
 
-`Accounts(EOAs or contracts) can call makeClone of the LeverageManagerFactory to clone an instance of the Smart Wallet (Leverage Manager / Account Data) contracts, in which the initialization function, mimicing a constructor, sets the account to the owner of the Smart Wallet. 
+`Accounts(EOAs or contracts) can call makeClone of the LeverageManagerFactory to clone an instance of the Smart Wallet (Leverage Manager / Account Data) contracts, in which the initialization function, mimicing a constructor, sets the account to the owner of the Smart Wallet.`
 
-Upon cloning a Smart Wallet, an Account can now transfer ERC20 tokens to it as margin, open/edit/close one lend/borrow leveraged position per pool (^2a-b), and withdraw their margin.`
+`Upon cloning a Smart Wallet, an Account can now transfer ERC20 tokens to it as margin, open/edit/close one lend/borrow leveraged position per pool (^2a-b), and withdraw their margin.`
 
 ^2a: there is no chcek for max leveraage hit. mathematical limit is $$ \frac{1}{1 - collateralFactor}) $$ 
 ^2b: todo: is it safe to hard-code the position being closed upon borrow being 0? should this be the check?
