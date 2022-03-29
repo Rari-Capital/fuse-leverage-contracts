@@ -1,0 +1,2 @@
+@uniswap/v3-periphery/contracts=node_modules/@uniswap/v3-periphery/contracts
+@uniswap/v3-core/contracts=node_modules/@uniswap/v3-core/contracts
