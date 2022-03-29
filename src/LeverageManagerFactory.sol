@@ -1,7 +1,7 @@
 pragma solidity >=0.7.6;
 
 import './Clones.sol';
-import './AccountData.sol';
+import './LevSmartWallet.sol';
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 
 contract LeverageManagerFactory is Clones {

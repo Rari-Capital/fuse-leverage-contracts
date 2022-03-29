@@ -98,4 +98,17 @@ contract LevSmartWallet is ERC20Helper {
     function approve(address token, uint2256 amount) external view returns (bool) {
         safeApprove(address(this), token, amount);
     }
+
+
+      /*////////////////////////////////////////////////////////
+     /                  FTOKEN FUNCTIONS                      /
+    ////////////////////////////////////////////////////////*/
+
+    function sweepDust() external OnlyOwner {
+
+    }
+
+    function _sweepDust() internal {
+
+    }
 }

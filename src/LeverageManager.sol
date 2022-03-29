@@ -5,7 +5,7 @@ pragma abicoder v2;
 import "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3FlashCallback.sol";
 import "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
 import "@uniswap/v3-core/contracts/libraries/LowGasSafeMath.sol";
-import "@uniswap/v3-core/contracts/UniswapV3Pool.sol";
+import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 
 import "@uniswap/v3-periphery/contracts/base/PeripheryPayments.sol";
 import "@uniswap/v3-periphery/contracts/base/PeripheryImmutableState.sol";
@@ -18,6 +18,8 @@ import "@uniswap/v3-periphery/contracts/lens/QuoterV2.sol";
 import "./interfaces/IERC20Minimal.sol";
 import "./interfaces/IFTokenMinimal.sol";
 
+import "./LevSmartWallet.sol";
+
 
 // 
 
@@ -27,16 +29,17 @@ import "./interfaces/IFTokenMinimal.sol";
 contract LeverageManager is 
     IUniswapV3SwapCallback, 
     PeripheryImmutableState, 
-    PeripheryPayments {
+    PeripheryPayments,
+    LevSmartWallet {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;
 
 
-    bool private iLock = false;
-
     /*///////////////////////////////////////////////////////////////
                               "CONSTRUCTOR"
     //////////////////////////////////////////////////////////////*/
+
+    bool private iLock = false;
 
     function initialize(
         ISwapRouter _swapRouter,
@@ -53,89 +56,83 @@ contract LeverageManager is
     struct SwapCallbackData {
         address payer;    // todo: remove? 
         uint256 millis;   
+        uint256 margin;
         address token0;   // underlying lend token
         address token1;   // underlying borrow token 
         uint256 amount0;  // ?exact amount in (lev up) or out (lev down)
         uint256 amount1;  // ?vice versa
         address fToken0;  // lend cToken
         address fToken1;  // borrow ctoken
+        address fPool;
         bool    direction;  // determines increasing or decreasing positiion todo: needed?
         PoolAddress.PoolKey poolKey; 
     }
 
     ////////// FLASH CALLBACK //////////
 
-    /// @param _amount0 
-    /// @param _amount1 The fee from calling flash for token1
-    /// @param data The data needed in the callback passed
-    /// @notice UNSAFE: Failure to ensure correctness of 
-    /// parameters may not result in revert
-    /// @dev 
     function uniswapV3Callback(
-        int256 _amount0,
-        int256 _amount1,
-        bytes calldata data
+        int256 _amount0,    // 
+        int256 _amount1,    // 
+        bytes calldata data // 
     ) external override {
-
         SwapCallbackData memory decoded = abi.decode(data, (SwapCallbackData));
-
         // Validates call is from uniswap pool 
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
 
-
         bool dir = decoded.direction;
 
-
-        // Rule #1: Borrow / Principle + Borrow <= Collateral Factor 
-        // Rule #2: Hence CF determines max leverage: 1 / 1-CF 
-
-        TransferHelper.safeApprove(decoded.token0, address(swapRouter), decoded.amount0);
-        TransferHelper.safeApprove(decoded.token1, address(swapRouter), decoded.amount1);
-        
-        // Exact Amount in is the way to go, it may casue slight variation in opening leverage 
-        
-        IERC20Minimal token0 = IERC20Minimal(decoded.token0);
-        IERC20Minimal token1 = IERC20Minimal(decoded.token1);  
-        uint256 amountIn     = dir ? _amount0 : _amount1; 
-        uint256 amountOut    = dir ? _amount1 : _amount0;
+        // The borrow asset of the pool should always be exact, 
+        // weather its the output(lev up), or vice versa 
+        (uint256 amountIn , uint256 amountOut) = dir ? 
+        (_amount0, uint256(-_amount1)):
+        (uint256(-_amount1), _amount0);
     
         (IFTokenMinimal fIn , IFTokenMinimal fOut ) = dir ? 
-        (IFTokenMinimal(decoded.fToken0), IFTokenMinimal(decoded.fToken1)) :
+        (IFTokenMinimal(decoded.fToken0), IFTokenMinimal(decoded.fToken1)):
         (IFTokenMinimal(decoded.fToken1), IFTokenMinimal(decoded.fToken0)); 
 
-        
 
-
-        // todo: ftoken methods
-        // todo: move to smart wallet 
-        bool opened; 
         if(dir) {
-
+            // todo: test that dust is a ui issue and can be removed
+            // open case
             if(fIn.balanceOf(address(this)) == 0) {
+                // Only one asset can be longed at a time in a pool
+                if (positions[decoded.fPool].isOpen) revert(); // todo: build msg
+
+                positions[decoded.fPool].isOpen = true;
                 emit PositionOpened();
+
+            // increase case 
             } else {
                 emit PositionIncreased();
             }
 
-            fIn.mint(amountIn);
+            // Mint lend asset and receive borrow asset
+            fIn.mint(amountIn+decoded.margin); // todo: amountIn plus margin amount
             fOut.borrow(amountOut);
-            token1.transfer(msg.sender, amountOut);
-
+           
         } else {
-
+            // Payback borrow asset and receive lend asset
             fIn.repayBorrow(amountIn);
             fOut.redeemUnderlying(amountOut);
-            token0.transfer(msg.sender, amountOut);
 
-          
-            if(fIn.borrowBalance() == 0) {
+            // close case
+            if(fIn.borrowBalanceCurrent(address(this)) == 0) {
+                // removes all underlying to close the position fully
+                fOut.redeemUnderlying(fOut.balanceOf(address(this)));
+
+                positions[decoded.fPool].isOpen = false;
                 emit PositionClosed();
+
+            // decrease case 
             } else {
                 emit PositionDecreased();
             }
         }   
-        
-        
+
+        // payback the flash swap with received asset from fuse
+        address payback = dir ? decoded.token1 : decoded.token0;
+        IERC20Minimal(payback).transfer(msg.sender, amountOut);  
     }
 
 
@@ -147,9 +144,10 @@ contract LeverageManager is
         address token1;
         address fToken0;
         address fToken1;
-        uint24 fee;
-        uint256 amount0;
-        uint256 amount1;
+        address comptroller;
+        uint24  fee;
+        int256 amount;
+        uint256 margin;
         bool direction;
         uint160 sqrtPriceLimitX96;
         uint256 millis;
@@ -165,33 +163,26 @@ contract LeverageManager is
     * @param:
      */
     function initSwapUnsafe(SwapParams memory params) external OnlyOwner {
-        
         PoolAddress.PoolKey memory poolKey =
             PoolAddress.PoolKey({token0: params.token0, token1: params.token1, fee: params.fee});
         IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 
-        if(params.direction) {
-            IERC20Minimal(params.token0).approve(address(this), params.amount0);
-        }
-
-        int256 amount = params.direction ? int256(-params.amount0) : params.amount0; // TODO: reconsider
 
         // See UniswapV3Pool.sol for specifications
         pool.swap(
             address.this,
             params.direction,
-            amount, 
+            params.amount, 
             params.sqrtPriceLimitX96,
             abi.encode(SwapCallbackData({
                 payer:     msg.sender,
                 millis:    200,
                 token0:    params.token0,
                 token1:    params.token1,
-                amount0:   params.amount0,
-                amount1:   params.amount1,
                 fToken0:   params.fToken0,
                 fToken1:   params.fToken1,
                 poolKey:   poolKey,
+                fPool:     params.comptroller,
                 direction: params.direction
                 })
             )
