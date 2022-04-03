@@ -10,9 +10,11 @@ rough draft of cloneable univ3 swap receiver for openeing, closing, and editing 
 ### Examples of unsafe assumptions to make without checking offchain:
 1) univ3 pool assets 0/1 correctly coorespond to cToken 0/1
    - can be mixed up and ruin the entire txn if not checked for
-2) the previous pool position is closed before opening a new one
+2) these optimistic swaps are for majors/stables only
+   - as of writing this, we haven't implemented univ3 flash() + router for more exotic pairs, its just a vanilla optimistic swap good for leverage against stables 
+3) the previous pool position is closed before opening a new one
    - can mess up your collateral or worse a frontend/future txn builds
-3) the proper amount of leverage is taken 
+4) the proper amount of leverage is taken 
    - can have unexpectedly low/high liquidation price or instant liquidation
 
 Final reminder these contracts are wrappers for the existing logic of fuse, just as it was your responsiblity when looping leverage, its yours to use the provided frontend calculations or build the txn yourself
