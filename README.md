@@ -37,7 +37,7 @@ Final reminder these contracts are wrappers for the existing logic of fuse, just
    async function getUserWallet(user: string) {}
 ~~~
 **Params**
-- `user` : Address of sender / onwer of smart wallet
+- `user` : Address of sender / owner of smart wallet
   
 **Returns**
 - `string address || undefined` : address of user's smart wallet, or undefined if user's wallet not deployed yet
