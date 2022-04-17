@@ -12,9 +12,11 @@ import "@uniswap/v3-periphery/contracts/base/PeripheryImmutableState.sol";
 import "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
 import "@uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol";
 import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "@uniswap/v3-periphery/contracts/lens/QuoterV2.sol";
+import "@uniswap/v3-periphery/contracts/libraries/Path.sol";
 
+// Interfaces
+import "./interfaces/IExactOutputRouter.sol";
 import "./interfaces/IERC20Minimal.sol";
 import "./interfaces/IFTokenMinimal.sol";
 
@@ -31,30 +33,38 @@ contract LeverageManager is
     PeripheryImmutableState, 
     PeripheryPayments,
     LevSmartWallet {
-    using LowGasSafeMath for uint256;
-    using LowGasSafeMath for int256;
+    using LowGasSafeMath for uint256; // todo: depricate for 0.8
+    using LowGasSafeMath for int256;  // todo: depricate for 0.8
+    using Path for bytes;
 
+    /*///////////////////////////////////////////////////////////////
+                                STATE
+    //////////////////////////////////////////////////////////////*/
+
+    // initializer lock
+    bool private iLock = false;
+
+    IExactOutputRouter router;
 
     /*///////////////////////////////////////////////////////////////
                               "CONSTRUCTOR"
     //////////////////////////////////////////////////////////////*/
 
-    bool private iLock = false;
+
 
     function initialize(
-        ISwapRouter _swapRouter,
-        address _owner
+        address _owner,
+        address _router
     ) virtual PeripheryImmutableState(this._factory, this._WETH9) external {
         require(!iLock);
         iLock = true;
-        swapRouter = _swapRouter;
         owner = _owner;
+        router = IExactOutputRouter(_router);
+        blockPosted = block.number;
     }
 
 
-    // fee2 and fee3 are the two other fees associated with the two other pools of token0 and token1
     struct SwapCallbackData {
-        address payer;    // todo: remove? 
         uint256 millis;   
         uint256 margin;
         address token0;   // underlying lend token
@@ -65,12 +75,26 @@ contract LeverageManager is
         address fToken1;  // borrow ctoken
         address fPool;
         bool    direction;  // determines increasing or decreasing positiion todo: needed?
+        uint256 hopNum; 
+        address paybackHop;
+        uint24  paybackFee;
+        uint160 sqrtPriceLimitX96;
+        bytes path;
         PoolAddress.PoolKey poolKey; 
     }
 
+
     ////////// FLASH CALLBACK //////////
 
-    function uniswapV3Callback(
+    /**
+    * Opens, closes, or edits leveraged isolated fuse pool positions of the smart wallet
+    * by using uniswap optimistic swaps. Because in fuse we are always going from
+    * one asset lend to one asset borrow (|| vice versa), we use swap instead of flash
+    *
+    * The callback will use the first and last asset in a single or multi hop swap
+    * to alter fusev1 positions  
+    */
+    function uniswapV3SwapCallback(
         int256 _amount0,    // 
         int256 _amount1,    // 
         bytes calldata data // 
@@ -80,6 +104,36 @@ contract LeverageManager is
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
 
         bool dir = decoded.direction;
+
+        // the amount to payback the exact output swap
+        int256 paybackAmt = _amount0 > _amount1 ? -int256(_amount0) : -int256(_amount1);
+
+        (address a, address b, uint24 fee) = path.decodeFirstPool();
+        
+
+        if(path.hasMultiplePools()) {
+
+            // elegant way to pay back the previous pool in the multihop
+            IERC20Minimal(a).transfer(
+                address(getPool(decoded.paybackHop, a, decoded.paybackFee)),
+                paybackAmt
+            );
+            
+            // reset payback data to the current pair to swap
+            decoded.paybackHop = a;
+            decoded.paybackFee = fee;
+            
+            decoded.path = path.skipToken;
+            
+            bool zeroForOne = b < a;
+
+            router.initSwap(abi.encode(decoded));
+
+      
+        } else {
+            editPositionInternal(decoded);
+        }
+
 
         // The borrow asset of the pool should always be exact, 
         // weather its the output(lev up), or vice versa 
@@ -91,6 +145,10 @@ contract LeverageManager is
         (IFTokenMinimal(decoded.fToken0), IFTokenMinimal(decoded.fToken1)):
         (IFTokenMinimal(decoded.fToken1), IFTokenMinimal(decoded.fToken0)); 
 
+
+
+        // todo: potentially move to seperate function, call conditionally either
+        // before/after multihop or instantly for single hop
 
         if(dir) {
             // todo: test that dust is a ui issue and can be removed
@@ -135,10 +193,45 @@ contract LeverageManager is
         IERC20Minimal(payback).transfer(msg.sender, amountOut);  
     }
 
+    // safety check 
+    function editPositionFromRouter(bytes calldata data) external {
+        require(msg.sender == address(router));
+        SwapCallbackData decoded = abi.decode(data, (SwapCallbackData));
+        editPositionInternal(decoded);
+    }
+
+    // 
+    function editPositionInternal(SwapCallbackData memory data) internal {
+        // todo: move logic after else statements of callback here
+    }
+
 
     /**
-    * @dev: 0 and 1 represent lend and borrow of fuse pool respectively
+    * @dev fork of univ3 router exact output 
     */
+    function exactOutputInternal(
+        uint256 amountOut,
+        uint160 sqrtPriceLimitX96,
+        SwapCallbackData memory data
+    ) private returns (uint256 amountIn) {
+
+        // path is sliced down every swap, first pool is always current pool in multihop
+        (address tokenOut, address tokenIn, uint24 fee) = data.path.decodeFirstPool();
+        
+        bool dir = tokenIn < tokenOut;
+
+        (int256 amount0Delta, int256 amount1Delta) =
+            getPool(tokenIn, tokenOut, fee).swap(
+                address(this),
+                dir,
+                -amountOut.toInt256(),
+                sqrtPriceLimitX96 == 0
+                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                    : sqrtPriceLimitX96,
+                abi.encode(data)
+            );
+    }
+    
     struct SwapParams {
         address token0;
         address token1;
@@ -152,6 +245,8 @@ contract LeverageManager is
         uint160 sqrtPriceLimitX96;
         uint256 millis;
     }
+
+
     ///////// EOA CALLED FUNCTIONS ///////////
 
     /** 
@@ -189,7 +284,7 @@ contract LeverageManager is
         );
     }
 
-
+   
 
 
 }

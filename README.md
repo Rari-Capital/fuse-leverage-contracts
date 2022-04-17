@@ -83,16 +83,14 @@ async function getPositionStatus(
 ```
 So what's happening here? 
 
-Liquid swap:
+Liquid Swap (single hop):
 If we have a liquid univ3 pair 0-1 that is the lend-borrow in fuse, we call a flash swap in the Smart Wallet. This transaction occurs as follows for upping leverage: the uni pool optimistically transfers the contract some amount of asset 0 to be collateralized, then the contract borrows the specific amount from fuse to repay the loan in asset 1. Because we want borrow amount in fuse to always be known, the inverse(lowering leverage) is receiving an exact amount of the borrow asset 1 to repay and redeeming some lend 0 to pay back univ3 swap.
 
 As you can see, this is why with leverage positions across defi, the leverage changes slightly according to slippage the second the transaction completes.
 
-Illiquid Flash:
-The case for leveraging between 2 assets that are not directly liquid between eachother adds a layer of complexity because we are using a single asset flash loan and a swap to pay back the original asset. Because of this complexity and larger path of multi-hop, there is by default more slippage and should be resorted to if there isnt liquidity between 2 assets to the extent realized slipage for a straight swap would be abysmal
-
-Upping leverage is as follows: 
-todo: it may make more sense to remove the last step of a multi hop and just flash swap that instead of doing a loan
+Illiquid Swap (multi hop):
+Eth <- USDC   USDC <- DAI   DAI <- Frax 
+The contract recieves the exact out of the first pair, the required amount of the asset in for that pool is received as an exact output for the next pool in the chain of assets, until the last. The last required asset in is paid either by borrowing it or redeeming it, exact output being either cToken minted(collateralized) / repaid respectively. 
  ```
 ## getZeroForOne() {}
 `Should be the first function called when dealing with the 2 specific tokens in a position. Uniswap 0 and 1 may be the opposite of fuse lend and borrow!`

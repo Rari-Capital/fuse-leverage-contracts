@@ -11,9 +11,9 @@ contract LevSmartWallet is ERC20Helper {
     address constant fee = 3000;
     address constant factory = address(""); // TODO: get address 
     address constant _WETH9 = address(""); // TODO: get address
-    ISwapRouter constant swapRouter = ISwapRouter(""); // TODO: get address 
+    
 
-
+    uint256 immutable blockPosted;
     address public owner;
 
     // comptroller => current position mapping 

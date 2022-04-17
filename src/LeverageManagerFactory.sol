@@ -10,10 +10,11 @@ contract LeverageManagerFactory is Clones {
     address immutable owner;
     ISwapRouter public immutable swapRouter;
 
-
+    
     bool public newUserLock;
 
-    mapping(address => address) public managers;
+    mapping(address => address) public ownerOfManager;
+    mapping(address => bool)    public approvedManager;
 
     event ManagerMade(address indexed manager, address indexed user);
     event AdditonalUsersLocked(string message);
@@ -25,13 +26,20 @@ contract LeverageManagerFactory is Clones {
         newUserLock = true;
     }
 
+    function getManager(address user) public view returns (address) {
+        return ownerOfManager[user];
+    }
+
     function makeClone() external {
         require(!newUserLock, "New Users Locked");
-        require(managers[msg.sender] == address(0), "Manager Exists");
+        require(ownerOfManager[msg.sender] == address(0), "Manager Exists");
 
         address _manager = clone(managerImplementation);
         PairFlash(_manager).initialize(swapRouter, msg.sender);
-        managers[msg.sender] = _manager;
+        ownerOfManager[msg.sender] = _manager;
+        
+        // callback safety measure
+        approvedManager[_manager] = true;
         assert(address(_manager) != address(0), "Major Clone Error");
         
         emit ManagerMade(_manager, msg.sender);
