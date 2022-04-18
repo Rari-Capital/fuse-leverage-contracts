@@ -18,7 +18,9 @@ contract LevSmartWallet is ERC20Helper {
 
     // comptroller => current position mapping 
     mapping(address => position) private positions;
-    mapping(address => mapping(address => uint256)) public tokens;
+
+    // todo remove 
+    //mapping(address => mapping(address => uint256)) public tokens;
 
     struct Position {
         address token0;
@@ -100,15 +102,4 @@ contract LevSmartWallet is ERC20Helper {
     }
 
 
-      /*////////////////////////////////////////////////////////
-     /                  FTOKEN FUNCTIONS                      /
-    ////////////////////////////////////////////////////////*/
-
-    function sweepDust() external OnlyOwner {
-
-    }
-
-    function _sweepDust() internal {
-
-    }
 }
