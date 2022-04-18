@@ -9,6 +9,10 @@ contract LevSmartWallet is ERC20Helper {
 
     
     address constant fee = 3000;
+    // todo: @jet regarding clone proxy, is the cheapest option when users 
+    // deploy to leave these as constants here (no storage write from cloning iirc), 
+    // or makes more sense to store them in the directory (factory)
+    // and reference them here?
     address constant factory = address(""); // TODO: get address 
     address constant _WETH9 = address(""); // TODO: get address
     
@@ -18,9 +22,6 @@ contract LevSmartWallet is ERC20Helper {
 
     // comptroller => current position mapping 
     mapping(address => position) private positions;
-
-    // todo remove 
-    //mapping(address => mapping(address => uint256)) public tokens;
 
     struct Position {
         address token0;
@@ -100,6 +101,5 @@ contract LevSmartWallet is ERC20Helper {
     function approve(address token, uint2256 amount) external view returns (bool) {
         safeApprove(address(this), token, amount);
     }
-
 
 }
