@@ -26,6 +26,7 @@ contract LeverageManagerFactory is Clones {
         newUserLock = true;
     }
 
+    // todo: remove, dummy
     function getManager(address user) public view returns (address) {
         return ownerOfManager[user];
     }
@@ -37,9 +38,10 @@ contract LeverageManagerFactory is Clones {
         address _manager = clone(managerImplementation);
         PairFlash(_manager).initialize(swapRouter, msg.sender);
         ownerOfManager[msg.sender] = _manager;
-        
+
         // callback safety measure
         approvedManager[_manager] = true;
+        
         assert(address(_manager) != address(0), "Major Clone Error");
         
         emit ManagerMade(_manager, msg.sender);
