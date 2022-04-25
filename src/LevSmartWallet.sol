@@ -5,9 +5,9 @@ pragma solidity >=0.7.6;
 import "./LeverageManager.sol";
 import "./libraries/ERC20Helper.sol";
 
+
 contract LevSmartWallet is ERC20Helper {
 
-    
     address constant fee = 3000;
     // todo: @jet regarding clone proxy, is the cheapest option when users 
     // deploy to leave these as constants here (no storage write from cloning iirc), 
@@ -15,12 +15,9 @@ contract LevSmartWallet is ERC20Helper {
     // and reference them here?
     address constant factory = address(""); // TODO: get address 
     address constant _WETH9 = address(""); // TODO: get address
-    
 
-    uint256 immutable blockPosted;
     address public owner;
 
-    // comptroller => current position mapping 
     mapping(address => position) private positions;
 
     struct Position {
@@ -75,13 +72,7 @@ contract LevSmartWallet is ERC20Helper {
     }
 
 
-    // todo: delete? 
-    function chown(address _newOwner) external {
-        require(msg.sender == owner);
-        owner = _newOwner;
-    }
-    
-    
+ 
       /*////////////////////////////////////////////////////////
      /                  ERC20 INTERACTIONS                    /
     ////////////////////////////////////////////////////////*/
